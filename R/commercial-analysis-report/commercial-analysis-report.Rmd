@@ -1,0 +1,602 @@
+---
+title: "`r params$client` Commercial Analysis Report"
+output:
+  powerpoint_presentation:
+    reference_doc: "resources/Template.pptx"
+author: "Data Analyst - Reza Muzhaffar Zidan"
+params:
+  client: "A Client"
+  start_date: "2021-01-01"
+  end_date: "2021-12-31"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+```
+
+```{r package, include=FALSE} 
+library(tidyverse)
+library(readxl)
+library(readr)
+library(lubridate)
+library(ggridges)
+library(kableExtra)
+library(knitr)
+library(magick)
+library(magrittr)
+library(flextable)
+library(ggthemes)
+library(treemapify)
+library(ggrepel)
+library(ggQC)
+library(reclin)
+library(stringdist)
+library(fuzzyjoin)
+library(sf)
+library(ggsflabel)
+library(ggthemr)
+library(officer)
+```
+
+```{r data, include=FALSE}
+data_order <- read_csv("data_order.csv")
+
+kodepos <- read_csv("resources/kodepos.csv") # Read Data Kode Pos
+
+windowsFonts(montserrat = windowsFont("Montserrat"))
+
+kodepos <- kodepos %>%
+  select(province, city, postal_code) %>%
+  distinct(postal_code, .keep_all = TRUE)
+
+colnames(data_order) <- gsub(" ", "_", colnames(data_order))
+names(data_order) <- tolower(names(data_order))
+
+data_order %>% # Detect NA
+  select(everything()) %>%
+  summarise_all(funs(sum(is.na(.))))
+
+kodepos_modif <- kodepos %>%
+  mutate(postal_code_3 = str_sub(postal_code, 1, 3)) %>%
+  select(-postal_code) %>%
+  distinct(postal_code_3, .keep_all = TRUE)
+
+year(data_order$order_date) <- 2021
+
+data_order <- data_order %>%
+  mutate(postal_code_3 = str_sub(postal_code, 1, 3)) %>%
+  left_join(kodepos_modif, by = "postal_code_3") %>%
+  filter(!str_detect(order_code,"SOOUT"),
+         last_status != "Canceled",
+         last_status != "Requested To Canceled") %>%
+  filter(order_date >= as.Date(params$start_date),
+         order_date <= as.Date(params$end_date)) %>%
+  filter(client_name == params$client)
+
+getmode <- function(v) {
+   uniqv <- unique(v)
+   uniqv[which.max(tabulate(match(v, uniqv)))]
+}
+
+spdf <- st_read("resources/BATAS PROVINSI DESEMBER 2019 DUKCAPIL/BATAS_PROVINSI_DESEMBER_2019_DUKCAPIL.shp")
+
+custom_palette <- c("#37b067", "#bbe2ad", "#edb40d", "#eb6672", "#9f8cae", "#7fd7c1", "#376c72", "#ee9dcc", "#e3791a", "#9f765e")
+
+ggthemr("fresh")
+```
+
+## Introduction
+
+This report is dedicated for `r params$client`. This document contains commercial analysis report that hopefully can help `r params$client` for performing data-driven decision making for the future. This report are recorded from `r format(min(data_order$order_date), "%d %B %Y")` to `r format(max(data_order$order_date), "%d %B %Y")`. In general, this report will contain:
+
+- Commercial Overview
+- Time Series Analysis
+- Location Based Analysis
+
+# Commercial Overview
+
+## Sales Overview
+
+:::::::::::::: {.columns}
+::: {.column}
+```{r items-sold, fig.width=6}
+order_summary <- data_order %>%
+  group_by(item_name) %>%
+  summarize(total = sum(allocation_quantity)) %>%
+  arrange(desc(total))
+
+head(order_summary, 10) %>% 
+  flextable() %>%
+  theme_zebra() %>%
+  border(border = fp_border(color = "black"), part = "all") %>%
+  width(j = "item_name", 3) %>%
+  width(j = "total", 2) %>%
+  align(j = "total", align = "center", part = "all") %>%
+  height(height = 0.4) %>%
+  height(height = 0.5, part = "header") %>%
+  fontsize(size = 12, part = "all") %>%
+  font(fontname = "Montserrat", part = "all") %>%
+  set_header_labels(values = list(item_name = "Item Name", total = "Total"))
+```
+:::
+::: {.column}
+**`r format(sum(data_order$allocation_quantity, na.rm = TRUE), scientific = FALSE)`**\
+Items Sold\
+\
+**`r length(unique(data_order$order_code))`**\
+Orders
+:::
+::::::::::::::
+
+## Top 10 Items Sold
+
+```{r, fig.width=8, dpi=300}
+data_order %>%
+  group_by(item_name, e_commerce_name) %>%
+  summarize(quantity = sum(allocation_quantity)) %>%
+  mutate(total_quantity = sum(quantity)) %>%
+  filter(item_name %in% head(order_summary, 10)$item_name) %>%
+  ggplot(aes(fct_reorder(item_name, total_quantity), quantity, fill = fct_reorder(e_commerce_name, desc(quantity)))) +
+  geom_col(position = "stack") +
+  coord_flip() +
+  theme(text = element_text(family = "montserrat")) +
+  labs(y = "Quantity", x = "Item Name") +
+  guides(fill = guide_legend(title = "E-Commerce Name")) +
+  scale_x_discrete(labels = function(x) str_wrap(x, width = 26)) +
+  theme(axis.text.y = element_text(size = 8)) +
+  theme(legend.text = element_text(size = 8))+
+  theme(axis.text.y = element_text(size = 6))
+```
+
+## E-Commerce Contribution with Pareto Principle
+
+```{r, fig.width=8, dpi=300}
+pareto <- data_order %>%
+  select(order_code, e_commerce_name) %>%
+  distinct(order_code, .keep_all = TRUE) %>%
+  group_by(e_commerce_name) %>%
+  summarize(Frequencies = length(e_commerce_name))
+
+pareto_80 <- sum(pareto$Frequencies) * 0.8
+
+ggplot(pareto, aes(e_commerce_name, Frequencies)) +
+  stat_pareto(point.color = "purple",
+              point.size = 2,
+              line.color = "purple",
+              bars.fill = c("#08519C", "#6BAED6")) +
+  labs(subtitle = "Cumulative Percentage Below 80% Recommend to Optimized",
+       x = "E-Commerce Name", y = "Orders Frequency") +
+  geom_hline(yintercept = pareto_80, linetype = "dashed", color = "blue") +
+  geom_text(aes(x = 0, y = pareto_80, label = "80%", hjust = -20, vjust = -0.5), color = "blue") +
+  theme(text = element_text(family = "montserrat")) +
+  theme(axis.title = element_text(size = 14)) +
+  theme(axis.title.x = element_text(vjust = -1)) +
+  theme(axis.title.y = element_text(vjust = 2)) +
+  theme(plot.title = element_text(vjust = 2)) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 8)) +
+  scale_x_discrete(labels = function(x) str_wrap(x, width = 16))
+```
+
+## Courier Contribution
+
+```{r, dpi=300}
+pie_data <- data_order %>%
+  select(order_code, courier_name) %>%
+  distinct(order_code, .keep_all = TRUE) %>%
+  group_by(courier_name) %>%
+  summarize(count = length(courier_name)) %>%
+  mutate(percent = format(count / sum(count) * 100, digits = 2, nsmall = 2),
+         percent = as.numeric(percent)) %>%
+  mutate(new_courier = ifelse(percent < 2, "OTHER (<2%)", courier_name)) %>%
+  select(new_courier, count, percent) %>%
+  group_by(new_courier) %>%
+  summarize(count = sum(count), percent = sum(percent)) %>%
+  mutate(percent = format(percent, digits = 2, nsmall = 2), percent = as.numeric(percent)) %>%
+  arrange(desc(count))
+
+pie_data2 <- pie_data %>% 
+  mutate(csum = rev(cumsum(rev(percent))),
+         pos = percent / 2 + lead(csum, 1),
+         pos = if_else(is.na(pos), percent / 2, pos))
+
+top_courier <- pie_data2 %>%
+  arrange(desc(count))
+  
+ggplot(pie_data, aes(x = "" , y = percent, fill = fct_inorder(new_courier))) +
+  geom_col(width = 1, color = 1) +
+  coord_polar(theta = "y") +
+  scale_fill_brewer(palette = "Pastel1") +
+  geom_label_repel(data = pie_data2,
+                   aes(y = pos, label = paste0(percent, "%")),
+                   size = 4.5, nudge_x = 1, show.legend = FALSE, family = "montserrat") +
+  guides(fill = guide_legend(title = "Courier Name")) +
+  theme_void() +
+  theme(plot.title = element_text(size = 20, vjust = 3)) +
+  theme(text = element_text(family = "montserrat"))
+```
+
+## Orders per Day Distribution
+
+```{r, fig.width=8, dpi=300}
+data_histogram <- data_order %>%
+  mutate(order_date = date(order_date)) %>%
+  group_by(order_date) %>%
+  summarize(order = length(unique(order_code))) %>%
+  mutate(order = as.numeric(order))
+  
+Q <- quantile(data_histogram$order, probs=c(.25, .75), na.rm = FALSE)
+
+iqr <- IQR(data_histogram$order)  
+
+up <-  Q[2]+1.5*iqr
+low <- Q[1]-1.5*iqr
+
+data_histogram <- data_histogram %>%
+  filter(order > (Q[1] - 1.5*iqr) & order < (Q[2]+1.5*iqr))
+
+Q_2 <- quantile(data_histogram$order, probs=c(.25, .75), na.rm = FALSE)
+
+iqr_2 <- IQR(data_histogram$order)  
+
+up_2 <-  Q_2[2]+1.5*iqr_2
+low_2 <- Q_2[1]-1.5*iqr_2
+
+data_histogram <- data_histogram %>%
+  filter(order > (Q_2[1] - 1.5*iqr_2) & order < (Q_2[2]+1.5*iqr_2))
+
+Q_3 <- quantile(data_histogram$order, probs=c(.25, .75), na.rm = FALSE)
+
+iqr_3 <- IQR(data_histogram$order)  
+
+up_3 <-  Q_3[2]+1.5*iqr_3
+low_3 <- Q_3[1]-1.5*iqr_3
+
+data_histogram <- data_histogram %>%
+  filter(order > (Q_3[1] - 1.5*iqr_3) & order < (Q_3[2]+1.5*iqr_3))
+  
+histogram_mean <- mean(data_histogram$order)
+histogram_sd <- sd(data_histogram$order)
+n <- length(data_histogram$order)
+sw_test <- shapiro.test(data_histogram$order)
+p_value <- sw_test$p.value
+t_table <- qt(p=.05/2, df = n - 1, lower.tail = FALSE)
+lower_tail <- histogram_mean - (t_table * (histogram_sd/sqrt(n)))
+upper_tail <- histogram_mean + (t_table * (histogram_sd/sqrt(n)))
+breaks <- 80
+
+ggplot(data_histogram, aes(order)) +
+  geom_histogram(color="grey", binwidth = breaks) +
+  scale_x_continuous(breaks = scales::breaks_width(breaks, offset = breaks / 2)) +
+  geom_vline(xintercept = lower_tail, linetype = "dashed", color = "navy", alpha = 0.5) +
+  geom_vline(xintercept = upper_tail, linetype = "dashed", color = "navy", alpha = 0.5) +
+  geom_text(mapping = aes(x = histogram_mean,
+                          y = 2.2,
+                          vjust = -0.5,
+                          family = "montserrat",
+                          fontface = "plain",
+                          label = paste0("Interval average number of orders per day", "\n", format(round(lower_tail, 2), nsmall = 2), " <= X <= ", format(round(upper_tail, 2), nsmall = 2))),
+            color = "navy", size = 3) +
+  theme(legend.position = "none") +
+  labs(x = "Orders",
+       y = "Frequencies (X)",
+       subtitle = "Special Event Not Included (Outlier Eliminated)") +
+  theme(plot.caption = element_text(hjust = 0)) +
+  theme(text = element_text(family = "montserrat"))
+```
+
+# Time Series Analysis
+
+## Order Growth
+
+```{r, fig.width=8, dpi=300}
+data_order %>%
+  mutate(Month = month(order_date, label = TRUE, abbr = FALSE)) %>%
+  group_by(Month) %>%
+  summarize(Order = length(unique(order_code))) %>%
+  mutate(month_numeric = as.numeric(Month)) %>%
+  ggplot(aes(as.numeric(Month), Order, fill = Order)) +
+  geom_col() +
+  geom_line() +
+  geom_point(size = 2) +
+  geom_text(aes(label = Order, family = "montserrat"), vjust = -0.4, size = 3) +
+  theme(legend.position = "right") +
+  theme(text = element_text(family = "montserrat")) +
+  theme(axis.title.y = element_text(vjust = 2)) +
+  labs(x = "Month", y = "Orders Frequency") +
+  scale_x_continuous(breaks = c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12), labels = function(x) month.abb[x])
+```
+
+## Number of Order by Day
+
+```{r, fig.width=8, dpi=300}
+data_ridge <- data_order %>%
+  distinct(order_code, .keep_all = TRUE) %>%
+  mutate(Day = wday(order_date, label = TRUE, abbr = FALSE),
+         Hour = hour(round_date(order_date, unit = "hours")),
+         Month = month(order_date, label = TRUE, abbr = FALSE))
+
+data_ridge %>%
+  group_by(Day) %>%
+  summarize(Frequencies = length(unique(order_code))) %>%
+  ggplot(aes(Day, Frequencies, fill = Frequencies)) +
+    geom_col() +
+    geom_text(aes(label = Frequencies, family = "montserrat"), vjust = -0.4) +
+    theme(text = element_text(family = "montserrat"))
+```
+
+## Daily Number of Orders
+
+```{r, fig.width=8, dpi=300}
+data_order %>%
+  mutate(order_date = date(order_date)) %>%
+  group_by(order_date) %>%
+  summarize(order = length(unique(order_code))) %>%
+  ggplot(aes(order_date, order)) +
+  geom_line() +
+  geom_point(size = 0.7) +
+  scale_x_date(date_breaks = "4 week",
+               date_labels = "%b %d") +
+  theme(axis.text.x=element_text(angle=60, hjust=1)) +
+  labs(x = "Date", y = "Total Order") +
+  theme(text = element_text(family = "montserrat"))
+```
+
+## Number of Order by Hour
+
+```{r, fig.width=8, dpi=300}
+mode_ridge <- getmode(data_ridge$Hour)
+
+ggplot(data_ridge, aes(x = Hour)) +
+  geom_bar() +
+  scale_x_continuous(breaks = 0:23) +
+  geom_vline(xintercept = mode_ridge, linetype = "dashed", color = "black") +
+  geom_text(mapping = aes(x = mode_ridge,
+                          y = 10000,
+                          vjust = -0.5,
+                          angle = 90,
+                          family = "montserrat",
+                          size = 10,
+                          fontface = "plain",
+                          label = paste0("Mode = ", mode_ridge - 1, ".30 - ", mode_ridge, ".30")),
+            color = "black") +
+  theme(legend.position = "none") +
+  labs(y = "Number of Order") +
+  theme(text = element_text(family = "montserrat"))
+```
+
+# Location Based Analysis
+
+## Warehouse Contribution
+
+```{r, fig.width=12, fig.height=6, dpi=300}
+data_order %>%
+  group_by(wh_name) %>%
+  summarize(count = length(unique(order_code))) %>%
+  ggplot(aes(area = count, fill = count, label = wh_name)) +
+  geom_treemap() +
+  geom_treemap_text(aes(family = "montserrat", fontface = "bold"), color = "white", size = 18) +
+  geom_treemap_text(aes(label = count, family = "montserrat"), place = "bottomright", color = "White", size = 16) +
+  theme(legend.position = "none") +
+  ggtitle("Order Volume by Warehouse Origin") +
+  theme(plot.title = element_text(size = 20, vjust = 1)) +
+  theme(text = element_text(family = "montserrat"))
+```
+
+## Orders Mapping
+
+```{r, fig.width=11, dpi=300}
+data_geospatial <- data_order %>%
+  select(order_code, province) %>%
+  mutate(province = toupper(province)) %>%
+  distinct(order_code, .keep_all = TRUE) %>%
+  group_by(province) %>%
+  summarize(orders = length(province)) %>%
+  drop_na() %>%
+  arrange(province)
+
+province_1 <- tibble(id = unique(data_geospatial$province))
+province_2 <- tibble(id = spdf$PROVINSI)
+pair_province <- pair_blocking(province_1, province_2) %>%
+  compare_pairs(by = "id", default_comparator = lcs()) %>%
+  score_simsum() %>%
+  select_n_to_m() %>%
+  link()
+
+data_geospatial <- data_geospatial %>%
+  left_join(pair_province, by = c(c("province" = "id.x"))) %>%
+  select(id.y, orders) %>%
+  rename("PROVINSI" = id.y)
+
+NA_location <- data_order %>%
+  distinct(order_code, .keep_all = TRUE) %>%
+  filter(is.na(province)) %>%
+  nrow()
+
+spdf <- spdf %>%
+  left_join(data_geospatial, by = "PROVINSI")
+
+ggplot(spdf) + 
+  geom_sf(aes(fill = orders)) +
+  theme_void() +
+  labs(fill = "Orders") +
+  geom_sf_label_repel(aes(label = orders), force = 20, nudge_x = -1) +
+  theme(legend.position = "none") +
+  labs(caption = paste0("Undefined Location = ", NA_location)) +
+  theme(text = element_text(family = "montserrat")) +
+  theme(plot.caption = element_text(hjust = 0))
+```
+
+## Top 5 City by Top Provinces
+
+```{r, fig.width=8, dpi=300}
+top_province <- data_geospatial %>%
+  arrange(desc(orders))
+
+top_1_province <- as.character(top_province[1, 1])
+
+data_order %>%
+  select(order_code, province, city) %>%
+  mutate(province = toupper(province)) %>%
+  distinct(order_code, .keep_all = TRUE) %>%
+  filter(province == top_1_province) %>%
+  group_by(city) %>%
+  summarize(Order = length(unique(order_code))) %>%
+  arrange(desc(Order)) %>%
+  head(5) %>%
+  ggplot(aes(fct_reorder(city, desc(Order)), Order)) +
+  geom_col() +
+  geom_text(aes(label = Order, family = "montserrat"), vjust = -0.2) +
+  labs(title = paste("Provinsi", str_to_title(top_1_province)), x = "City", y = "Orders Frequency") +
+  theme(text = element_text(family = "montserrat"))
+```
+
+## Top 5 City by Second Top Provinces
+
+```{r, fig.width=8, dpi=300}
+top_2_province <- as.character(top_province[2, 1])
+
+data_order %>%
+  select(order_code, province, city) %>%
+  mutate(province = toupper(province)) %>%
+  distinct(order_code, .keep_all = TRUE) %>%
+  filter(province == top_2_province) %>%
+  group_by(city) %>%
+  summarize(Order = length(unique(order_code))) %>%
+  arrange(desc(Order)) %>%
+  head(5) %>%
+  ggplot(aes(fct_reorder(city, desc(Order)), Order)) +
+  geom_col() +
+  geom_text(aes(label = Order, family = "montserrat"), vjust = -0.2) +
+  labs(title = paste("Provinsi", str_to_title(top_2_province)), x = "City", y = "Orders Frequency") +
+  theme(text = element_text(family = "montserrat"))
+```
+
+## Top 5 City by Third Top Provinces
+
+```{r, fig.width=8, dpi=300}
+top_3_province <- as.character(top_province[3, 1])
+
+data_order %>%
+  select(order_code, province, city) %>%
+  mutate(province = toupper(province)) %>%
+  distinct(order_code, .keep_all = TRUE) %>%
+  filter(province == top_3_province) %>%
+  group_by(city) %>%
+  summarize(Order = length(unique(order_code))) %>%
+  arrange(desc(Order)) %>%
+  head(5) %>%
+  ggplot(aes(fct_reorder(city, desc(Order)), Order)) +
+  geom_col() +
+  geom_text(aes(label = Order, family = "montserrat"), vjust = -0.2) +
+  labs(title = paste("Provinsi", str_to_title(top_3_province)), x = "City", y = "Orders Frequency") +
+  theme(text = element_text(family = "montserrat"))
+```
+
+## Top 10 Items by Top Cities
+
+```{r, fig.width=8, dpi=300}
+top_10_city <- data_order %>%
+  group_by(city) %>%
+  summarize(orders = length(unique(order_code))) %>%
+  arrange(desc(orders)) %>%
+  filter(!is.na(city)) %>%
+  head(10)
+
+data_order %>%
+  group_by(item_name, city) %>%
+  summarize(quantity = sum(allocation_quantity)) %>%
+  filter(city == as.character(top_10_city[1, 1])) %>%
+  arrange(desc(quantity)) %>%
+  head(10) %>%
+  ggplot(aes(fct_reorder(item_name, quantity), quantity)) +
+  geom_col(position = "stack") +
+  coord_flip() +
+  theme(text = element_text(family = "montserrat")) +
+  labs(title = paste0("Kota ", as.character(top_10_city[1, 1])), y = "Quantity", x = "Item Name") +
+  guides(fill = guide_legend(title = "City")) +
+  scale_x_discrete(labels = function(x) str_wrap(x, width = 34)) +
+  theme(axis.text.y = element_text(size = 6)) +
+  scale_fill_manual(values = custom_palette)
+```
+
+## Top 10 Items by Second Top Cities
+
+```{r, fig.width=8, dpi=300}
+data_order %>%
+  group_by(item_name, city) %>%
+  summarize(quantity = sum(allocation_quantity)) %>%
+  filter(city == as.character(top_10_city[2, 1])) %>%
+  arrange(desc(quantity)) %>%
+  head(10) %>%
+  ggplot(aes(fct_reorder(item_name, quantity), quantity)) +
+  geom_col(position = "stack") +
+  coord_flip() +
+  theme(text = element_text(family = "montserrat")) +
+  labs(title = paste0("Kota ", as.character(top_10_city[2, 1])), y = "Quantity", x = "Item Name") +
+  guides(fill = guide_legend(title = "City")) +
+  scale_x_discrete(labels = function(x) str_wrap(x, width = 34)) +
+  theme(axis.text.y = element_text(size = 6)) +
+  scale_fill_manual(values = custom_palette)
+```
+
+## Top 10 Items by Third Top Cities
+
+```{r, fig.width=8, dpi=300}
+data_order %>%
+  group_by(item_name, city) %>%
+  summarize(quantity = sum(allocation_quantity)) %>%
+  filter(city == as.character(top_10_city[3, 1])) %>%
+  arrange(desc(quantity)) %>%
+  head(10) %>%
+  ggplot(aes(fct_reorder(item_name, quantity), quantity)) +
+  geom_col(position = "stack") +
+  coord_flip() +
+  theme(text = element_text(family = "montserrat")) +
+  labs(title = paste0("Kota ", as.character(top_10_city[3, 1])), y = "Quantity", x = "Item Name") +
+  guides(fill = guide_legend(title = "City")) +
+  scale_x_discrete(labels = function(x) str_wrap(x, width = 34)) +
+  theme(axis.text.y = element_text(size = 6)) +
+  scale_fill_manual(values = custom_palette)
+```
+
+## Top 10 Items by Fourth Top Cities
+
+```{r, fig.width=8, dpi=300}
+data_order %>%
+  group_by(item_name, city) %>%
+  summarize(quantity = sum(allocation_quantity)) %>%
+  filter(city == as.character(top_10_city[4, 1])) %>%
+  arrange(desc(quantity)) %>%
+  head(10) %>%
+  ggplot(aes(fct_reorder(item_name, quantity), quantity)) +
+  geom_col(position = "stack") +
+  coord_flip() +
+  theme(text = element_text(family = "montserrat")) +
+  labs(title = paste0("Kota ", as.character(top_10_city[4, 1])), y = "Quantity", x = "Item Name") +
+  guides(fill = guide_legend(title = "City")) +
+  scale_x_discrete(labels = function(x) str_wrap(x, width = 34)) +
+  theme(axis.text.y = element_text(size = 6)) +
+  scale_fill_manual(values = custom_palette)
+```
+
+## Top 10 Items Fifth by Top Cities
+
+```{r, fig.width=8, dpi=300}
+data_order %>%
+  group_by(item_name, city) %>%
+  summarize(quantity = sum(allocation_quantity)) %>%
+  filter(city == as.character(top_10_city[5, 1])) %>%
+  arrange(desc(quantity)) %>%
+  head(10) %>%
+  ggplot(aes(fct_reorder(item_name, quantity), quantity)) +
+  geom_col(position = "stack") +
+  coord_flip() +
+  theme(text = element_text(family = "montserrat")) +
+  labs(title = paste0("Kota ", as.character(top_10_city[5, 1])), y = "Quantity", x = "Item Name") +
+  guides(fill = guide_legend(title = "City")) +
+  scale_x_discrete(labels = function(x) str_wrap(x, width = 34)) +
+  theme(axis.text.y = element_text(size = 6)) +
+  scale_fill_manual(values = custom_palette)
+```
+
+# Thank You!
