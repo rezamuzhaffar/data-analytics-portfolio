@@ -2,7 +2,7 @@
 
 Welcome to my Power BI Data Visualization portfolio!
 
-To view a showcase of my projects where I used Power BI to transform difficult data into understandable insights, click the link below. These visual aids are more than simply graphs and charts; they tell tales that come to life as you explore. These interactive dashboards and reports are made to make comprehending data simple, regardless of whether you're a decision-maker or a data enthusiast. Come along with me on this data adventure at Power BI Showcase, and together, let's unleash the power of your data!
+To view a showcase of my projects where I used Power BI to transform difficult data into understandable insights, click the link below. These visual aids are more than simply graphs and charts; they tell tales that come to life as you explore. These interactive dashboards and reports are made to make comprehending data simple, regardless of whether you're a decision-maker or a data enthusiast. Come along with me on this data adventure at [My Power BI Showcase](https://www.novypro.com/profile_projects/reza-muzhaffar-zidan), and together, let's unleash the power of your data!
 
 ### Employee Attendance Report
 **Dashboard**: [`Dashboard`](https://www.novypro.com/project/employee-attendance-dashboard)<br>
