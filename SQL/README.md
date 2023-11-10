@@ -11,14 +11,14 @@ This repository is proof of my proficiency with SQL, specially for Data Query La
 
 ## Practices
 1. [sql-practice](https://www.sql-practice.com/)
-    - Northwind Database --> [northwind-sql-practice.ipynb](https://github.com/rezamuzhaffar/data-analytics-portfolio/blob/main/SQL/northwind-sql-practice.ipynb)
-    - Hospital Database --> [hospital_database_sql_practices.ipynb](https://github.com/rezamuzhaffar/data-analytics-portfolio/blob/main/SQL/hospital-sql-practice/hospital_database_sql_practices.ipynb)
+    - Northwind Database --> [northwind-sql-practice.ipynb](https://github.com/rezamuzhaffar/data-analytics-portfolio/blob/main/SQL/Northwind%20SQL%20Practices.ipynb)
+    - Hospital Database --> [hospital_database_sql_practices.ipynb](https://github.com/rezamuzhaffar/data-analytics-portfolio/blob/main/SQL/Hospital%20SQL%20Practices/Hospital%20SQL%20Practices.ipynb)
 
 ## Resources
 Hope that the resources I created will inspire you to try the same things that I did!
 
-1. Hospital Database PostgreSQL Queries --> [hospital.sql](https://github.com/rezamuzhaffar/data-analytics-portfolio/blob/main/SQL/hospital-sql-practice/hospital.sql)
-2. Web Scraping Script for [sql-practice](https://www.sql-practice.com/) --> [hospital_db_scrap.py](https://github.com/rezamuzhaffar/data-analytics-portfolio/blob/main/SQL/hospital_db_scrap.py)
+1. Hospital Database PostgreSQL Queries --> [hospital.sql](https://github.com/rezamuzhaffar/data-analytics-portfolio/blob/main/SQL/Hospital%20SQL%20Practices/hospital.sql)
+2. Web Scraping Script for [sql-practice](https://www.sql-practice.com/) --> [hospital_db_scrap.py](https://github.com/rezamuzhaffar/data-analytics-portfolio/blob/main/SQL/Hospital%20SQL%20Practices/hospital_db_scrap.py)
 
 <br />
 <hr style="border:2px solid gray">
