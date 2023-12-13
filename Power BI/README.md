@@ -8,3 +8,11 @@ To view a showcase of my projects where I used Power BI to transform difficult d
 **Dashboard**: [`Dashboard`](https://www.novypro.com/project/employee-attendance-dashboard)<br>
 **File**: [`Employee Attendance Report.pbix`](https://github.com/rezamuzhaffar/data-analytics-portfolio/blob/main/Power%20BI/Employee%20Attendance%20Report.pbix)<br>
 The Employee Attendance Power BI Dashboard will provide the HR department at AtliQ Technologies with a powerful tool to gain deep insights into employee attendance trends, WFH preferences, and sick leave patterns during the COVID-19 pandemic era. The user-friendly interface and interactive data visualization will enable HR to make informed decisions, understand individual employee needs, and enhance workforce management strategies.
+
+<br />
+<hr style="border:2px solid gray">
+Feel free to contact me via:
+
+Email: muzhaffarzidan@gmail.com <br />
+LinkedIn: [linkedin.com/in/reza-muzhaffar-zidan/](https://www.linkedin.com/in/reza-muzhaffar-zidan/) <br />
+Or follow my GitHub: [github.com/rezamuzhaffar](https://github.com/rezamuzhaffar)
